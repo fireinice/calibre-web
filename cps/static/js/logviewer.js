@@ -17,7 +17,11 @@
 
 // Upon loading load the logfile for the first option (event log)
 $(function() {
-    init(0);
+    if ($("#log_group input").length)
+    {
+        var element = $("#log_group input[type='radio']:checked").val();
+        init(element);
+    }
 });
 
 // After change the radio option load the corresponding log file
@@ -32,21 +36,8 @@ function init(logType) {
     var d = document.getElementById("renderer");
     d.innerHTML = "loading ...";
 
-    /*var r = new XMLHttpRequest();
-    r.open("GET", "/ajax/log/" + logType, true);
-    r.responseType = "text";
-    r.onload = function() {
-        var text;
-        text = (r.responseText).split("\n");
-        $("#renderer").text("");
-        console.log(text.length);
-        for (var i = 0; i < text.length; i++) {
-            $("#renderer").append( "<div>" + _sanitize(text[i]) + "</div>" );
-        }
-    };
-    r.send();*/
     $.ajax({
-        url: "/ajax/log/" + logType,
+        url: window.location.pathname + "/../../ajax/log/" + logType,
         datatype: "text",
         cache: false
     })

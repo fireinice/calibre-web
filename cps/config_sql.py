@@ -25,7 +25,7 @@ import sys
 from sqlalchemy import exc, Column, String, Integer, SmallInteger, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 
-from . import constants, cli, logger
+from . import constants, cli, logger, ub
 
 
 log = logger.create()
@@ -38,7 +38,7 @@ class _Settings(_Base):
     __tablename__ = 'settings'
 
     id = Column(Integer, primary_key=True)
-    mail_server = Column(String, default='mail.example.org')
+    mail_server = Column(String, default=constants.DEFAULT_MAIL_SERVER)
     mail_port = Column(Integer, default=25)
     mail_use_ssl = Column(SmallInteger, default=0)
     mail_login = Column(String, default='mail@example.com')
@@ -68,11 +68,17 @@ class _Settings(_Base):
     config_anonbrowse = Column(SmallInteger, default=0)
     config_public_reg = Column(SmallInteger, default=0)
     config_remote_login = Column(Boolean, default=False)
-
+    config_kobo_sync = Column(Boolean, default=False)
 
     config_default_role = Column(SmallInteger, default=0)
     config_default_show = Column(SmallInteger, default=6143)
     config_columns_to_ignore = Column(String)
+
+    config_denied_tags = Column(String, default="")
+    config_allowed_tags = Column(String, default="")
+    config_restricted_column = Column(SmallInteger, default=0)
+    config_denied_column_value = Column(String, default="")
+    config_allowed_column_value = Column(String, default="")
 
     config_use_google_drive = Column(Boolean, default=False)
     config_google_drive_folder = Column(String)
@@ -84,7 +90,8 @@ class _Settings(_Base):
 
     config_login_type = Column(Integer, default=0)
 
-    # config_oauth_provider = Column(Integer)
+    config_kobo_proxy = Column(Boolean, default=False)
+
 
     config_ldap_provider_url = Column(String, default='localhost')
     config_ldap_port = Column(SmallInteger, default=389)
@@ -105,6 +112,9 @@ class _Settings(_Base):
     config_rarfile_location = Column(String)
 
     config_updatechannel = Column(Integer, default=constants.UPDATE_STABLE)
+
+    config_reverse_proxy_login_header_name = Column(String)
+    config_allow_reverse_proxy_header_login = Column(Boolean, default=False)
 
     def __repr__(self):
         return self.__class__.__name__
@@ -176,11 +186,20 @@ class _ConfigSQL(object):
     def show_detail_random(self):
         return self.show_element_new_user(constants.DETAIL_RANDOM)
 
-    def show_mature_content(self):
-        return self.show_element_new_user(constants.MATURE_CONTENT)
+    def list_denied_tags(self):
+        mct = self.config_denied_tags.split(",")
+        return [t.strip() for t in mct]
 
-    def mature_content_tags(self):
-        mct = self.config_mature_content_tags.split(",")
+    def list_allowed_tags(self):
+        mct = self.config_allowed_tags.split(",")
+        return [t.strip() for t in mct]
+
+    def list_denied_column_values(self):
+        mct = self.config_denied_column_value.split(",")
+        return [t.strip() for t in mct]
+
+    def list_allowed_column_values(self):
+        mct = self.config_allowed_column_value.split(",")
         return [t.strip() for t in mct]
 
     def get_log_level(self):
@@ -188,6 +207,10 @@ class _ConfigSQL(object):
 
     def get_mail_settings(self):
         return {k:v for k, v in self.__dict__.items() if k.startswith('mail_')}
+
+    def get_mail_server_configured(self):
+        return not bool(self.mail_server == constants.DEFAULT_MAIL_SERVER)
+
 
     def set_from_dictionary(self, dictionary, field, convertor=None, default=None):
         '''Possibly updates a field of this object.
@@ -246,8 +269,7 @@ class _ConfigSQL(object):
         for k, v in self.__dict__.items():
             if k[0] == '_':
                 continue
-            if hasattr(s, k):  # and getattr(s, k, None) != v:
-                # log.debug("_Settings save '%s' = %r", k, v)
+            if hasattr(s, k):
                 setattr(s, k, v)
 
         log.debug("_ConfigSQL updating storage")
@@ -270,12 +292,18 @@ def _migrate_table(session, orm_class):
             try:
                 session.query(column).first()
             except exc.OperationalError as err:
-                log.debug("%s: %s", column_name, err)
+                log.debug("%s: %s", column_name, err.args[0])
                 if column.default is not None:
                     if sys.version_info < (3, 0):
                         if isinstance(column.default.arg,unicode):
                             column.default.arg = column.default.arg.encode('utf-8')
-                column_default = "" if column.default is None else ("DEFAULT %r" % column.default.arg)
+                if column.default is None:
+                    column_default = ""
+                else:
+                    if isinstance(column.default.arg, bool):
+                        column_default = ("DEFAULT %r" % int(column.default.arg))
+                    else:
+                        column_default = ("DEFAULT %r" % column.default.arg)
                 alter_table = "ALTER TABLE %s ADD COLUMN `%s` %s %s" % (orm_class.__tablename__,
                                                                         column_name,
                                                                         column.type,
@@ -311,5 +339,12 @@ def load_configuration(session):
     if not session.query(_Settings).count():
         session.add(_Settings())
         session.commit()
-
-    return _ConfigSQL(session)
+    conf = _ConfigSQL(session)
+    # Migrate from global restrictions to user based restrictions
+    if bool(conf.config_default_show & constants.MATURE_CONTENT) and conf.config_denied_tags == "":
+        conf.config_denied_tags = conf.config_mature_content_tags
+        conf.save()
+        session.query(ub.User).filter(ub.User.mature_content != True). \
+            update({"denied_tags": conf.config_mature_content_tags}, synchronize_session=False)
+        session.commit()
+    return conf

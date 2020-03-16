@@ -22,6 +22,7 @@
 
 from __future__ import division, print_function, unicode_literals
 import sys
+import platform
 import sqlite3
 from collections import OrderedDict
 
@@ -29,7 +30,7 @@ import babel, pytz, requests, sqlalchemy
 import werkzeug, flask, flask_login, flask_principal, jinja2
 from flask_babel import gettext as _
 
-from . import db, converter, uploader, server, isoLanguages
+from . import db, converter, uploader, server, isoLanguages, constants
 from .web import render_title_template
 try:
     from flask_login import __version__ as flask_loginVersion
@@ -37,6 +38,7 @@ except ImportError:
     from flask_login.__about__ import __version__ as flask_loginVersion
 try:
     import unidecode
+    # _() necessary to make babel aware of string for translation
     unidecode_version = _(u'installed')
 except ImportError:
     unidecode_version = _(u'not installed')
@@ -47,7 +49,11 @@ about = flask.Blueprint('about', __name__)
 
 
 _VERSIONS = OrderedDict(
+    Platform = '{0[0]} {0[2]} {0[3]} {0[4]} {0[5]}'.format(platform.uname()),
     Python=sys.version,
+    Calibre_Web=constants.STABLE_VERSION['version'] + ' - '
+                + constants.NIGHTLY_VERSION[0].replace('%','%%') + ' - '
+                + constants.NIGHTLY_VERSION[1].replace('%','%%'),
     WebServer=server.VERSION,
     Flask=flask.__version__,
     Flask_Login=flask_loginVersion,
@@ -62,8 +68,9 @@ _VERSIONS = OrderedDict(
     iso639=isoLanguages.__version__,
     pytz=pytz.__version__,
     Unidecode = unidecode_version,
-    Flask_SimpleLDAP =  _(u'installed') if bool(services.ldap) else _(u'not installed'),
-    Goodreads = _(u'installed') if bool(services.goodreads_support) else _(u'not installed'),
+    Flask_SimpleLDAP =  u'installed' if bool(services.ldap) else u'not installed',
+    Goodreads = u'installed' if bool(services.goodreads_support) else u'not installed',
+    jsonschema = services.SyncToken.__version__  if bool(services.SyncToken) else u'not installed',
 )
 _VERSIONS.update(uploader.get_versions())
 
