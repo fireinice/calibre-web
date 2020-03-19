@@ -22,7 +22,7 @@
 
 from __future__ import division, print_function, unicode_literals
 
-from flask import Blueprint, request, flash, redirect, url_for
+from flask import Blueprint, request, flash, redirect, url_for, g
 from flask_babel import gettext as _
 from flask_login import login_required, current_user
 from sqlalchemy.sql.expression import func, or_, and_
@@ -30,6 +30,7 @@ from sqlalchemy.sql.expression import func, or_, and_
 from . import logger, ub, searched_ids, db
 from .web import render_title_template
 from .helper import common_filters
+from .pagination import Pagination
 
 
 shelf = Blueprint('shelf', __name__)
@@ -284,7 +285,7 @@ def show_shelf(shelf_type, shelf_id):
     result = list()
     # user is allowed to access shelf
     if shelf:
-        page = "shelf.html" if shelf_type == 1 else 'shelfdown.html'
+        page_tpl = "shelf.html" if shelf_type == 1 else 'shelfdown.html'
 
         books_in_shelf = ub.session.query(ub.BookShelf).filter(ub.BookShelf.shelf == shelf_id)\
             .order_by(ub.BookShelf.order.asc()).all()
@@ -296,8 +297,20 @@ def show_shelf(shelf_type, shelf_id):
                 log.info('Not existing book %s in %s deleted', book.book_id, shelf)
                 ub.session.query(ub.BookShelf).filter(ub.BookShelf.book_id == book.book_id).delete()
                 ub.session.commit()
-        return render_title_template(page, entries=result, title=_(u"Shelf: '%(name)s'", name=shelf.name),
-                                 shelf=shelf, page="shelf")
+
+        pagination = None
+        if g.browser_agent == "kindle3":
+            page = request.args.get('page', default=1, type=int)
+            books_per_page = 6
+            page_tpl = "shelf_kindle.html"
+            offset = (page - 1) * books_per_page
+            total_books_cnt = len(result)
+            result = result[offset:offset+books_per_page]
+            pagination = Pagination(
+                page, books_per_page, total_books_cnt)
+            
+        return render_title_template(page_tpl, entries=result, title=_(u"Shelf: '%(name)s'", name=shelf.name),
+                                     shelf=shelf, page="shelf", pagination=pagination)
     else:
         flash(_(u"Error opening shelf. Shelf does not exist or is not accessible"), category="error")
         return redirect(url_for("web.index"))

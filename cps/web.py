@@ -268,6 +268,9 @@ def before_request():
     g.current_theme = config.config_theme
     g.config_authors_max = config.config_authors_max
     g.public_shelfes = ub.session.query(ub.Shelf).filter(ub.Shelf.is_public == 1).order_by(ub.Shelf.name).all()
+    g.browser_agent = ""
+    if request.user_agent.string.find("Kindle/3.0+") > 0:
+        g.browser_agent = "kindle3"
     if not config.db_configured and request.endpoint not in ('admin.basic_configuration', 'login') and '/static/' not in request.path:
         return redirect(url_for('admin.basic_configuration'))
 
@@ -1468,8 +1471,10 @@ def show_book(book_id):
         for media_format in entries.data:
             if media_format.format.lower() in constants.EXTENSIONS_AUDIO:
                 audioentries.append(media_format.format.lower())
-
-        return render_title_template('detail.html', entry=entries, audioentries=audioentries, cc=cc,
+        page_tpl = "detail.html"
+        if g.browser_agent == "kindle3":
+            page_tpl = "detail_kindle.html"
+        return render_title_template(page_tpl, entry=entries, audioentries=audioentries, cc=cc,
                                      is_xhr=request.headers.get('X-Requested-With')=='XMLHttpRequest', title=entries.title, books_shelfs=book_in_shelfs,
                                      have_read=have_read, kindle_list=kindle_list, reader_list=reader_list, page="book")
     else:

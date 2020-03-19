@@ -1,0 +1,35 @@
+{% extends "layout_kindle.html" %}
+{% block body %}
+  <div class="discover">
+    <h2>{{title}}</h2>
+    <div class="row">
+      {% for entry in entries %}
+	<div class="col-md-4 book">
+	  <div class="cover">
+            <a href="{{ url_for('web.show_book', book_id=entry.id) }}">
+              <img src="{{ url_for('web.get_cover', book_id=entry.id) }}" alt="{{ entry.title }}" />
+            </a>
+	  </div>
+	  <div class="meta">
+            <a href="{{ url_for('web.show_book', book_id=entry.id) }}">
+              <p class="title">{{entry.title|shortentitle(15)}}</p>
+            </a>
+            <div class="rating">
+              {% if entry.ratings.__len__() > 0 %}
+		{% for number in range((entry.ratings[0].rating/2)|int(2)) %}
+		  <span class="glyphicon glyphicon-star good"></span>
+		  {% if loop.last and loop.index < 5 %}
+		    {% for numer in range(5 - loop.index) %}
+		      <span class="glyphicon glyphicon-star"></span>
+		    {% endfor %}
+		  {% endif %}
+		{% endfor %}
+	      {% endif %}
+	    </div>
+	  </div>
+	</div>
+      {% endfor %}
+    </div>
+  </div>
+
+{% endblock %}
